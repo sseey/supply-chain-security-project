@@ -3,6 +3,10 @@
 **But :** avoir les outils installés, le dépôt forké, et une image de l'app qui build.
 
 > Prérequis d'installation : [`../docs/01-prerequis-setup.md`](../docs/01-prerequis-setup.md).
+>
+> 🔧 **Automatisation :** chaque commande brute de ce lab a un équivalent scripté —
+> `make check-prereqs`, `make build`, `make push` (voir `../README.md#automatisation-make`).
+> Le lab reste la meilleure façon de comprendre la mécanique la première fois.
 
 ## 0.1 Vérifier les outils
 

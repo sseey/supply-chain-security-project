@@ -1,0 +1,13 @@
+# Service NodePort de l'app — mappé sur localhost:8080 par cluster/kind-config.yaml.
+apiVersion: v1
+kind: Service
+metadata:
+  name: scs-demo-app
+  namespace: app
+spec:
+  type: NodePort
+  selector: { app: scs-demo-app }
+  ports:
+    - port: 80
+      targetPort: 8080
+      nodePort: 30080     # mappé sur localhost:8080 par kind-config.yaml

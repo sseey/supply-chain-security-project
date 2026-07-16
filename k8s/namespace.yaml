@@ -1,0 +1,8 @@
+# Namespace dédié à l'application — remplace le `kubectl create namespace app`
+# impératif du Lab 3 par un manifeste déclaratif et reproductible.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: app
+  labels:
+    app.kubernetes.io/part-of: scs-demo-app

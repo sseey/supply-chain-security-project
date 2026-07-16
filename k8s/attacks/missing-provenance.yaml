@@ -1,0 +1,15 @@
+# Test E — Attaque : image signée mais SANS attestation de provenance ⇒ attendu DENIED
+# (policy 04-require-provenance). Nécessite une image signée à laquelle vous n'avez PAS
+# attaché de provenance (cf. labs/lab4-attaque-defense.md, Attaque 5), puis :
+#   export NO_PROVENANCE_DIGEST=sha256:...
+# scripts/run-demo.sh fait la substitution ci-dessous ; sans cette variable, ce test est
+# clairement signalé comme NON EXÉCUTÉ plutôt que simulé.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: attack-missing-provenance
+  namespace: app
+spec:
+  containers:
+    - name: app
+      image: ghcr.io/sseey/scs-demo-app@sha256:0c69dcaa5def48134f69d2a8d4b50334ed1d6fdac204b881d8c3ea7663397449

@@ -1,24 +1,50 @@
 # Pipeline supply-chain de référence (Lab 5).
-# build → SBOM → scan → push → sign (keyless) → attest (SBOM + provenance).
+# test → build → SBOM → scan → push → sign (keyless) → attest (SBOM + provenance) → vérifie.
 # Signature KEYLESS : aucune clé stockée, l'identité est celle de CE workflow (OIDC).
+#
+# Tourne sur main ET sur les branches features/* (pipeline complet dans les deux cas).
+# ⚠️ L'identité OIDC signée dépend de la branche exacte (github.ref) : une image buildée
+# depuis features/ma-branche a une identité keyless différente de celle buildée depuis main.
+# Adaptez policies/kyverno/03 et 04 (bloc keyless, champ `subject`) à la branche que vous
+# voulez déployer/vérifier — voir docs/troubleshooting.md.
 name: supply-chain
 
 on:
   push:
-    branches: [main]
+    branches: [main, "features/**"]
   workflow_dispatch:
 
 permissions:
   contents: read
-  packages: write        # pousser sur GHCR
-  id-token: write        # OIDC → signature keyless (Fulcio/Rekor)
 
 env:
   IMAGE: ghcr.io/${{ github.repository_owner }}/scs-demo-app
 
 jobs:
-  build-sign-attest:
+  test:
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r app/requirements.txt pytest
+
+      - name: Run tests
+        run: cd app && python -m pytest -v
+
+  build-sign-attest:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write        # pousser sur GHCR
+      id-token: write        # OIDC → signature keyless (Fulcio/Rekor)
+      attestations: write    # attestation de provenance native GitHub
     steps:
       - uses: actions/checkout@v4
 
@@ -48,13 +74,15 @@ jobs:
         run: syft "${{ steps.ref.outputs.ref }}" -o spdx-json > sbom.spdx.json
 
       # ---- Scan : casse si CRITICAL corrigeable ----
+      # Installation directe de grype (version épinglée), pas via anchore/scan-action :
+      # ce wrapper a embarqué un binaire grype obsolète (v0.80.0) dont la base de
+      # vulnérabilités compatible dépassait l'âge maximal accepté (5 jours), faisant
+      # échouer le scan avec un faux message de vulnérabilité critique. Voir
+      # docs/troubleshooting.md pour le détail de cet incident.
+      - name: Install Grype
+        run: curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin v0.115.0
       - name: Scan (Grype) — gate sur CRITICAL
-        uses: anchore/scan-action@v4
-        with:
-          image: ${{ steps.ref.outputs.ref }}
-          fail-build: true
-          severity-cutoff: critical
-          only-fixed: true
+        run: grype "sbom:sbom.spdx.json"
 
       # ---- Signature keyless ----
       - name: Install cosign
@@ -62,7 +90,7 @@ jobs:
       - name: Sign image (keyless)
         run: cosign sign --yes "${{ steps.ref.outputs.ref }}"
 
-      # ---- Attestation SBOM ----
+      # ---- Attestation SBOM (cosign) ----
       - name: Attest SBOM
         run: |
           cosign attest --yes \
@@ -70,8 +98,12 @@ jobs:
             --type spdxjson \
             "${{ steps.ref.outputs.ref }}"
 
-      # ---- Attestation de provenance SLSA ----
-      - name: Génère la provenance
+      # ---- Attestation de provenance PÉDAGOGIQUE (cosign, predicate écrit à la main) ----
+      # Conservée pour retrouver, dans le lab, la structure exacte d'un predicate SLSA.
+      # Pour la CI, on lui préfère la provenance OFFICIELLE ci-dessous (GitHub Artifact
+      # Attestations), infalsifiable car générée par l'infrastructure GitHub elle-même,
+      # pas par une commande shell du job.
+      - name: Génère la provenance (pédagogique)
         run: |
           cat > provenance.json <<EOF
           {
@@ -85,18 +117,59 @@ jobs:
             }
           }
           EOF
-      - name: Attest provenance (SLSA)
+      - name: Attest provenance pédagogique (cosign, SLSA v0.2)
         run: |
           cosign attest --yes \
             --predicate provenance.json \
             --type slsaprovenance \
             "${{ steps.ref.outputs.ref }}"
 
+      # ---- Attestation de provenance OFFICIELLE (GitHub Artifact Attestations) ----
+      - name: Attest provenance officielle (GitHub Artifact Attestations)
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+      # ---- Vérifications (preuve que signature + attestations sont bien exploitables) ----
+      - name: Vérifie la signature (keyless)
+        run: |
+          cosign verify \
+            --certificate-identity "${{ github.server_url }}/${{ github.repository }}/.github/workflows/supply-chain.yml@${{ github.ref }}" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            "${{ steps.ref.outputs.ref }}"
+
+      - name: Vérifie l'attestation SBOM
+        run: |
+          cosign verify-attestation --type spdxjson \
+            --certificate-identity "${{ github.server_url }}/${{ github.repository }}/.github/workflows/supply-chain.yml@${{ github.ref }}" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            "${{ steps.ref.outputs.ref }}" > /dev/null
+
+      - name: Vérifie l'attestation de provenance (pédagogique)
+        run: |
+          cosign verify-attestation --type slsaprovenance \
+            --certificate-identity "${{ github.server_url }}/${{ github.repository }}/.github/workflows/supply-chain.yml@${{ github.ref }}" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            "${{ steps.ref.outputs.ref }}" > /dev/null
+
+      # ---- Publication des artefacts (SBOM + provenance pédagogique) ----
+      - name: Publie les artefacts du build
+        uses: actions/upload-artifact@v4
+        with:
+          name: supply-chain-artifacts
+          path: |
+            sbom.spdx.json
+            provenance.json
+          retention-days: 30
+
       - name: Récapitulatif
         run: |
-          echo "### Image signée & attestée :computer:" >> "$GITHUB_STEP_SUMMARY"
-          echo "\`${{ steps.ref.outputs.ref }}\`" >> "$GITHUB_STEP_SUMMARY"
-
-# NB : pour une provenance SLSA "officielle" (niveau supérieur), voir le générateur
-#      slsa-framework/slsa-github-generator (job séparé). Le bloc ci-dessus est volontairement
-#      simple à des fins pédagogiques.
+          {
+            echo "### Image signée & attestée :computer:"
+            echo "\`${{ steps.ref.outputs.ref }}\`"
+            echo "- Signature keyless : vérifiée ✅"
+            echo "- Attestation SBOM : vérifiée ✅"
+            echo "- Attestation provenance (pédagogique + officielle) : vérifiées ✅"
+          } >> "$GITHUB_STEP_SUMMARY"

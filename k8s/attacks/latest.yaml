@@ -1,0 +1,12 @@
+# Test B — Attaque : tag `:latest` (mutable) ⇒ attendu DENIED (policy 02-disallow-latest).
+# Substitution du registre effectuée par scripts/run-demo.sh ; ne nécessite pas de compte GHCR
+# pour être testé (l'image n'a même pas besoin d'exister : Kyverno refuse à l'admission).
+apiVersion: v1
+kind: Pod
+metadata:
+  name: attack-latest-tag
+  namespace: app
+spec:
+  containers:
+    - name: app
+      image: ghcr.io/sseey/scs-demo-app:latest

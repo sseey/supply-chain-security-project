@@ -3,6 +3,11 @@
 **But :** monter un cluster `kind`, installer **Kyverno**, et appliquer des politiques
 d'**admission** qui **exigent** signature + attestations + registry autorisé + pas de `:latest`.
 
+> 🔧 **Automatisation :** `make cluster-create` puis `make kyverno-install` font tout ce qui
+> suit (§3.1 à 3.3), avec une version de Kyverno épinglée et testée (voir
+> `docs/troubleshooting.md` si vous préférez le faire à la main et rencontrez une erreur
+> de CRD trop volumineuse ou d'incompatibilité de version Kubernetes).
+
 ## 3.1 Créer le cluster kind
 
 ```bash
@@ -15,10 +20,20 @@ kubectl cluster-info --context kind-scs
 ## 3.2 Installer Kyverno
 
 ```bash
-kubectl create -f https://github.com/kyverno/kyverno/releases/latest/download/install.yaml
+# ⚠️ N'utilisez PAS `kubectl apply` directement sur ce fichier : les CRD de Kyverno
+# dépassent la limite de 262144 octets de l'annotation last-applied-configuration.
+# Utilisez --server-side (ou `kubectl create`, qui ne pose pas ce problème) :
+kubectl apply --server-side --force-conflicts \
+  -f https://github.com/kyverno/kyverno/releases/download/v1.14.5/install.yaml
 # Attendre que Kyverno soit prêt :
 kubectl -n kyverno rollout status deploy/kyverno-admission-controller
 ```
+
+> ⚠️ **Version épinglée volontairement** (`v1.14.5`, pas `releases/latest`) : les toutes
+> dernières versions de Kyverno utilisent des CRD (`selectableFields`) qui exigent
+> Kubernetes ≥ 1.31, incompatibles avec un cluster `kind` par défaut (Kubernetes 1.29).
+> Voir `docs/troubleshooting.md` pour le détail de cette incompatibilité, rencontrée et
+> corrigée pendant la mise au point de ce dépôt.
 
 > **Kyverno** est un moteur de politiques Kubernetes natif : les règles sont des **objets YAML**
 > (`ClusterPolicy`). Il s'insère comme **admission webhook** : *avant* qu'un Pod soit créé, il
@@ -27,7 +42,7 @@ kubectl -n kyverno rollout status deploy/kyverno-admission-controller
 ## 3.3 Créer le namespace applicatif
 
 ```bash
-kubectl create namespace app
+kubectl apply -f k8s/namespace.yaml
 ```
 
 ## 3.4 Appliquer les politiques
@@ -85,10 +100,18 @@ spec:
 
 ## 3.6 Déployer l'app (image signée) → doit être ACCEPTÉE
 
-Mettez à jour `k8s/deployment.yaml` avec **votre image par digest** (`$DIGEST`), puis :
+🔧 **Automatisation :** `export DIGEST=sha256:...` puis `make deploy`
+(`scripts/deploy.sh`) — le script substitue votre digest **en mémoire**, sans jamais
+modifier `k8s/deployment.yaml` (le placeholder documenté y reste intact pour les autres
+étudiants/relecteurs).
+
+Pour le faire à la main :
 
 ```bash
-kubectl apply -n app -f k8s/deployment.yaml
+# Remplace le placeholder à la volée, sans toucher au fichier suivi par git :
+sed "s|ghcr.io/<votre-user>/scs-demo-app@sha256:REMPLACEZ_PAR_VOTRE_DIGEST|ghcr.io/<votre-user>/scs-demo-app@$DIGEST|" \
+  k8s/deployment.yaml | kubectl apply -n app -f -
+kubectl apply -n app -f k8s/service.yaml
 kubectl get pods -n app -w        # le pod doit démarrer
 ```
 

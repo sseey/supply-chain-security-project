@@ -1,0 +1,11 @@
+# Test C — Attaque : image depuis un registre non autorisé ⇒ attendu DENIED (policy 01-allowed-registries).
+# Aucune substitution nécessaire : image publique fixe, hors de ghcr.io/<votre-user>/.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: attack-untrusted-registry
+  namespace: app
+spec:
+  containers:
+    - name: app
+      image: docker.io/library/nginx:1.25

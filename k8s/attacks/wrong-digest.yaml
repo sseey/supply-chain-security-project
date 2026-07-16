@@ -1,0 +1,16 @@
+# Test F — Attaque : image modifiée après signature (nouveau digest, sans signature valide
+# pour CE digest) ⇒ attendu DENIED (policy 03-verify-signature). Scénario SolarWinds.
+# Nécessite d'avoir reconstruit l'image avec un contenu différent après signature
+# (cf. labs/lab4-attaque-defense.md, Attaque 2), puis :
+#   export TAMPERED_DIGEST=sha256:...
+# scripts/run-demo.sh fait la substitution ci-dessous ; sans cette variable, ce test est
+# clairement signalé comme NON EXÉCUTÉ plutôt que simulé.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: attack-wrong-digest
+  namespace: app
+spec:
+  containers:
+    - name: app
+      image: ghcr.io/sseey/scs-demo-app@sha256:4722d215b825ecf3853fb13cfb57a3fbbdc7dae37d8e06fd026af985dac1634c

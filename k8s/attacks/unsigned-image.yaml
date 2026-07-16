@@ -1,0 +1,15 @@
+# Test D — Attaque : image jamais signée ⇒ attendu DENIED (policy 03-verify-signature).
+# Nécessite d'avoir construit ET poussé (mais jamais signé) une variante de l'image
+# (cf. labs/lab4-attaque-defense.md, Attaque 1) puis d'exporter son digest :
+#   export UNSIGNED_DIGEST=sha256:...
+# scripts/run-demo.sh fait la substitution ci-dessous ; sans cette variable, ce test est
+# clairement signalé comme NON EXÉCUTÉ plutôt que simulé.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: attack-unsigned-image
+  namespace: app
+spec:
+  containers:
+    - name: app
+      image: ghcr.io/sseey/scs-demo-app@sha256:c0bb0660dbbd3dcce6f1f8c78b2dd9b9fe8ed9de5ece6714826a7bafd1dde9b9

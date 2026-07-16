@@ -4,6 +4,9 @@
 et une **provenance SLSA**. À la fin, n'importe qui peut *vérifier* que l'image vient de vous.
 
 > On travaille **par digest** (`$DIGEST` du Lab 0). Signer un tag mutable n'a aucun sens.
+>
+> 🔧 **Automatisation :** `export DIGEST=sha256:...` puis `make sign` (mode keyless par
+> défaut ; `./scripts/sign.sh key` pour le mode par clé), `make attest`, `make verify`.
 
 ## 2.1 Deux modes de signature — comprendre le choix
 

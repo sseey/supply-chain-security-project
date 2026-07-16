@@ -9,15 +9,23 @@ signature est celle du **workflow** (OIDC), et rien n'est fait à la main.
 
 ## 5.1 Ce que fait le pipeline
 
-À chaque `push` sur `main`, le workflow :
+Le workflow a deux jobs : `test` (pytest, doit passer avant tout le reste) puis
+`build-sign-attest`. À chaque `push` sur `main` :
 
-1. **build** l'image (par digest, sorti par `docker/build-push-action`) ;
-2. génère le **SBOM** (Syft) ;
-3. **scanne** (Grype) et **casse** si `CRITICAL` corrigeable ;
-4. **pousse** l'image sur GHCR ;
-5. **signe** l'image en **keyless** (OIDC du runner, via `cosign sign`) ;
-6. **attache** l'attestation **SBOM** (`cosign attest --type spdxjson`) ;
-7. **attache** l'attestation de **provenance** (via l'OIDC du runner / `slsa-github-generator`).
+1. **teste** l'application (`pytest`) — le build ne démarre pas si les tests échouent ;
+2. **build** l'image (par digest, sorti par `docker/build-push-action`) ;
+3. génère le **SBOM** (Syft) ;
+4. **scanne** (Grype) et **casse** si `CRITICAL` corrigeable ;
+5. **pousse** l'image sur GHCR ;
+6. **signe** l'image en **keyless** (OIDC du runner, via `cosign sign`) ;
+7. **attache** l'attestation **SBOM** (`cosign attest --type spdxjson`) ;
+8. **attache** une provenance **pédagogique** (`cosign attest --type slsaprovenance`,
+   predicate écrit à la main — conservée pour retrouver la structure exacte) **et** une
+   provenance **officielle** via `actions/attest-build-provenance` (mécanisme natif
+   GitHub, infalsifiable car généré par l'infrastructure GitHub elle-même) ;
+9. **vérifie** la signature et les deux attestations (`cosign verify` /
+   `verify-attestation`) — le workflow casse si la vérification échoue ;
+10. **publie** `sbom.spdx.json` et `provenance.json` comme artefacts téléchargeables du run.
 
 Aucune clé privée n'est stockée : l'identité est
 `https://github.com/<user>/<repo>/.github/workflows/supply-chain.yml@refs/heads/main`.
@@ -29,7 +37,12 @@ permissions:
   contents: read
   packages: write        # pousser sur GHCR
   id-token: write        # OIDC → signature keyless (Fulcio/Rekor)
+  attestations: write    # attestation de provenance native GitHub
 ```
+
+> Ces permissions sont déclarées au niveau du job `build-sign-attest`, pas au niveau global
+> du workflow : le job `test` n'a besoin que de `contents: read` (principe du moindre
+> privilège — un job qui ne fait que lancer pytest n'a aucune raison de pouvoir écrire sur GHCR).
 
 ## 5.3 Adapter la vérification Kyverno au mode keyless
 

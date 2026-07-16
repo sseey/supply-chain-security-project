@@ -6,6 +6,13 @@ cluster **refuse** chaque tentative. **C'est le cœur de votre démo de soutenan
 > Enregistrez chaque échec (message d'erreur Kyverno). Faites une **capture vidéo** de la
 > séquence complète : elle sera votre plan B si le live plante en soutenance.
 
+> 🔧 **Automatisation :** `make demo` (`scripts/run-demo.sh`) exécute réellement les
+> scénarios B (`:latest`) et C (registre non autorisé) sans rien de plus — ils ne nécessitent
+> pas que l'image existe vraiment. Pour les scénarios D, E, F ci-dessous, construisez les
+> variantes d'attaque comme indiqué, puis exportez `UNSIGNED_DIGEST` / `NO_PROVENANCE_DIGEST`
+> / `TAMPERED_DIGEST` avant de relancer `make demo` — les manifestes correspondants sont dans
+> `k8s/attacks/`.
+
 ## Scénario 0 (référence) — image légitime ⇒ ✅ ACCEPTÉE
 
 Rappel du Lab 3 : votre image signée + provenance + bon registry + par digest démarre.

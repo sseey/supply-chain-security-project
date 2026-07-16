@@ -3,6 +3,10 @@
 **But :** produire le **SBOM** de l'image (sa composition exacte), le **scanner**, et faire
 en sorte qu'une **vulnérabilité critique arrête la chaîne**.
 
+> 🔧 **Automatisation :** `make sbom` (`scripts/generate-sbom.sh`) et `make scan`
+> (`scripts/scan.sh`) font exactement ce qui suit, avec la politique `.grype.yaml` déjà
+> appliquée.
+
 ## 1.1 Générer le SBOM avec Syft
 
 Un **SBOM** (*Software Bill of Materials*) liste tous les paquets contenus dans l'image.

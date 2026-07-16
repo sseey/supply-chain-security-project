@@ -11,15 +11,19 @@ tout le code de départ ; votre travail consiste à le faire fonctionner, le com
 
 | Fourni ✅ (ne pas réécrire) | À produire / compléter par vous 🛠️ |
 |---|---|
-| `app/` — API Flask + `Dockerfile` + tests (réutilisée du module précédent) | Le **SBOM**, le **scan**, la **signature**, les **attestations** (labs 1-2) |
-| `policies/kyverno/` — 4 politiques d'admission prêtes | Y coller **votre `cosign.pub`** / **votre identité keyless** + `<votre-user>` |
-| `k8s/deployment.yaml` — manifeste de déploiement | Y mettre **votre image par digest** |
-| `.github/workflows/supply-chain.yml` — pipeline de référence | L'**activer** sur votre fork + adapter (lab 5) |
-| `cluster/kind-config.yaml`, `.grype.yaml`, `.gitignore` | Rien (utilisables tels quels) |
-| `labs/`, `docs/`, `evaluation/`, `livrables/` — supports & templates | Remplir les **livrables** |
+| `app/` — API Flask + `Dockerfile` + tests (réutilisée du module précédent) | Rien — l'app ne se modifie pas |
+| `scripts/`, `Makefile` — automatisation de toute la chaîne (`make help`) | Copier `.env.example` → `.env` et le personnaliser |
+| `policies/kyverno/` — 4 politiques d'admission prêtes (clé + keyless) | Y coller **votre `cosign.pub`** / **votre identité keyless** + `<votre-user>` |
+| `k8s/deployment.yaml`, `k8s/namespace.yaml`, `k8s/service.yaml` | Déployer via `make deploy` (injecte votre digest, ne modifie pas le fichier) |
+| `k8s/attacks/*.yaml` — manifestes des scénarios de refus | Renseigner les digests des variantes d'attaque (`export UNSIGNED_DIGEST=...`) |
+| `.github/workflows/supply-chain.yml` — pipeline de référence | L'**activer** sur votre fork (rien à adapter : il utilise le contexte GitHub) |
+| `cluster/kind-config.yaml`, `.grype.yaml`, `.gitignore`, `.yamllint` | Rien (utilisables tels quels) |
+| `labs/`, `docs/`, `evaluation/`, `livrables/` — supports & templates | Remplir les **livrables** (`livrables/rapport.md`, `threat-model.md`, `soutenance-notes.md`) |
 
 > 🔎 **Où trouver le code de départ ?** Dépôt GitHub du projet (URL communiquée par l'encadrant),
 > à **forker** dans votre compte. Tous les placeholders à remplacer sont écrits `<votre-user>`.
+> Le détail des commandes `make`/`scripts/*.sh` disponibles est documenté dans le
+> [`README.md`](../README.md#automatisation-make) et [`docs/demo-guide.md`](demo-guide.md).
 
 ## 1. Ce dont vous avez besoin (packages)
 
