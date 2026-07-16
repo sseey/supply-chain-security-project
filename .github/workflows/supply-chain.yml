@@ -45,6 +45,8 @@ jobs:
       packages: write        # pousser sur GHCR
       id-token: write        # OIDC → signature keyless (Fulcio/Rekor)
       attestations: write    # attestation de provenance native GitHub
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
     steps:
       - uses: actions/checkout@v4
 
@@ -173,3 +175,26 @@ jobs:
             echo "- Attestation SBOM : vérifiée ✅"
             echo "- Attestation provenance (pédagogique + officielle) : vérifiées ✅"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # ---- Déploiement sur le cluster kind local ----
+  # Tourne sur un runner self-hosted (votre poste) : un runner GitHub-hosted (ubuntu-latest)
+  # n'a aucune route réseau vers votre cluster kind local, donc ne peut jamais exécuter
+  # cette étape. Voir docs/troubleshooting.md pour le détail de ce choix d'architecture.
+  deploy:
+    needs: build-sign-attest
+    runs-on: self-hosted
+    env:
+      GITHUB_USERNAME: ${{ github.repository_owner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Applique les policies Kyverno (idempotent)
+        run: kubectl apply -f policies/kyverno/
+
+      - name: Déploie l'app PAR DIGEST
+        run: |
+          export DIGEST="${{ needs.build-sign-attest.outputs.digest }}"
+          ./scripts/deploy.sh
+
+      - name: Vérifie que le Pod est ACCEPTED et tourne
+        run: kubectl -n app get pods -l app=scs-demo-app

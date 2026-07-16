@@ -26,3 +26,4 @@ evaluation/qcm-corrige.md
 *.log
 
 .bak
+actions-runner/
