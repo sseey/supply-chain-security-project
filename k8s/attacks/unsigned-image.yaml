@@ -12,4 +12,4 @@ metadata:
 spec:
   containers:
     - name: app
-      image: ghcr.io/<votre-user>/scs-demo-app@sha256:REMPLACEZ_PAR_LE_DIGEST_NON_SIGNE
+      image: ghcr.io/sseey/scs-demo-app@sha256:c0bb0660dbbd3dcce6f1f8c78b2dd9b9fe8ed9de5ece6714826a7bafd1dde9b9

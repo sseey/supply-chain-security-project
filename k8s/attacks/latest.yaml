@@ -9,4 +9,4 @@ metadata:
 spec:
   containers:
     - name: app
-      image: ghcr.io/<votre-user>/scs-demo-app:latest
+      image: ghcr.io/sseey/scs-demo-app:latest

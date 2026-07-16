@@ -18,7 +18,7 @@ spec:
     spec:
       containers:
         - name: app
-          image: ghcr.io/<votre-user>/scs-demo-app@sha256:REMPLACEZ_PAR_VOTRE_DIGEST
+          image: ghcr.io/sseey/scs-demo-app:cedb75aefbc00936c49e229e3e8c5f2086fb11d9
           ports:
             - containerPort: 8080
           readinessProbe:
@@ -34,6 +34,15 @@ spec:
             limits: { cpu: "250m", memory: "128Mi" }
           securityContext:
             runAsNonRoot: true
+            runAsUser: 10001        # correspond à --uid 10001 / USER appuser dans app/Dockerfile
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            # readOnlyRootFilesystem interdit l'écriture partout ailleurs ; gunicorn a besoin
+            # d'un répertoire temporaire inscriptible (tempfile.mkstemp du WorkerTmp).
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

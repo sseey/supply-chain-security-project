@@ -31,32 +31,28 @@ spec:
               kinds: [Pod]
       verifyImages:
         - imageReferences:
-            - "ghcr.io/<votre-user>/scs-demo-app*"
+            - "ghcr.io/sseey/scs-demo-app*"
           required: true
           attestations:
             - type: https://slsa.dev/provenance/v0.2
-              # ---- (A) VARIANTE PAR CLÉ ----
-              attestors:
-                - count: 1
-                  entries:
-                    - keys:
-                        publicKeys: |-
-                          -----BEGIN PUBLIC KEY-----
-                          COLLEZ_ICI_LE_CONTENU_DE_cosign.pub
-                          -----END PUBLIC KEY-----
-              # ---- (B) VARIANTE KEYLESS (Lab 5) : commentez le bloc 'keys' ci-dessus
-              #          et décommentez le bloc 'keyless' ci-dessous ----
+              # ---- (A) VARIANTE PAR CLÉ (désactivée) ----
               # attestors:
               #   - count: 1
               #     entries:
-              #       - keyless:
-              #           issuer: "https://token.actions.githubusercontent.com"
-              #           # Même remarque que la policy 03 : adaptez @refs/heads/main à la
-              #           # branche exacte qui a construit l'image (ex. features/ma-branche)
-              #           # si vous testez une image buildée hors de main.
-              #           subject: "https://github.com/<votre-user>/supply-chain-security-project/.github/workflows/supply-chain.yml@refs/heads/main"
-              #           rekor:
-              #             url: "https://rekor.sigstore.dev"
+              #       - keys:
+              #           publicKeys: |-
+              #             -----BEGIN PUBLIC KEY-----
+              #             COLLEZ_ICI_LE_CONTENU_DE_cosign.pub
+              #             -----END PUBLIC KEY-----
+              # ---- (B) VARIANTE KEYLESS (Lab 5) — ACTIVE ----
+              attestors:
+                - count: 1
+                  entries:
+                    - keyless:
+                        issuer: "https://token.actions.githubusercontent.com"
+                        subject: "https://github.com/sseey/supply-chain-security-project/.github/workflows/supply-chain.yml@refs/heads/main"
+                        rekor:
+                          url: "https://rekor.sigstore.dev"
               # ---- BONUS : conditions sur le CONTENU de la provenance ----
               # conditions:
               #   - all:
