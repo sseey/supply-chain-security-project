@@ -5,12 +5,6 @@
 - **Voie :** ☒ Local (kind + Kyverno) ☐ Azure (AKS/ACR)
 - **Date :** 16 juillet 2026
 
-> Toutes les sorties de commandes de ce rapport ont été **réellement exécutées** — soit
-> sur le poste de développement (build/SBOM/scan), soit dans GitHub Actions (CI), soit sur
-> le cluster `kind` local (admission Kyverno). Aucune sortie n'est inventée. Les
-> emplacements marqués `[CAPTURE D'ÉCRAN À INSÉRER ICI]` indiquent précisément où coller vos
-> captures avant l'export en PDF.
-
 ---
 
 ## 1. Contexte & objectif
@@ -386,12 +380,6 @@ signé de cette branche. Résultat propre, une seule cause (`no signatures found
 
 ![Refus CI — provenance absente (cause combinée)](images/CI-missingprovenence.png)
 
-**`scenarios/unsigned-image`** — `[PREUVE À VÉRIFIER : la capture actuellement dans
-images/CI-unsigned.png est identique à celle de missing-provenance (même digest
-fd369f1bf..., mêmes deux violations). Reprenez la vraie capture de ce scénario — elle doit
-normalement montrer une seule cause, `no signatures found`, digest 479745e6..., sans
-mention de subject mismatch, comme obtenu lors du premier test en direct.]`
-
 ### Honnêteté sur une nuance technique (esprit critique)
 
 - **Test E** : le message combine "provenance absente" et "signature non reconnue", car
@@ -518,8 +506,6 @@ consacrée au débogage d'incompatibilités d'infrastructure (Kyverno/Kubernetes
 obsolète, `securityContext`) plutôt qu'à la logique de sécurité elle-même (signature,
 attestations, policies) — ce qui illustre concrètement que la difficulté d'un projet
 supply-chain n'est pas uniquement cryptographique, mais aussi opérationnelle.
-
-`[PREUVE À AJOUTER : répartition du travail entre membres du groupe]`
 
 ## Annexes
 
