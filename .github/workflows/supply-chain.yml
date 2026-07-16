@@ -11,7 +11,7 @@ name: supply-chain
 
 on:
   push:
-    branches: [main, "features/**"]
+    branches: [main, "features/**", "scenarios/**"]
   workflow_dispatch:
 
 permissions:
@@ -87,13 +87,18 @@ jobs:
         run: grype "sbom:sbom.spdx.json"
 
       # ---- Signature keyless ----
+      # Sautée sur scenarios/unsigned-image : démonstration volontaire d'une image jamais
+      # signée, refusée par la policy 03-verify-signature (voir docs/troubleshooting.md).
       - name: Install cosign
+        if: github.ref_name != 'scenarios/unsigned-image'
         uses: sigstore/cosign-installer@v3
       - name: Sign image (keyless)
+        if: github.ref_name != 'scenarios/unsigned-image'
         run: cosign sign --yes "${{ steps.ref.outputs.ref }}"
 
       # ---- Attestation SBOM (cosign) ----
       - name: Attest SBOM
+        if: github.ref_name != 'scenarios/unsigned-image'
         run: |
           cosign attest --yes \
             --predicate sbom.spdx.json \
@@ -105,7 +110,11 @@ jobs:
       # Pour la CI, on lui préfère la provenance OFFICIELLE ci-dessous (GitHub Artifact
       # Attestations), infalsifiable car générée par l'infrastructure GitHub elle-même,
       # pas par une commande shell du job.
+      # Sautée sur scenarios/unsigned-image ET scenarios/missing-provenance : démonstration
+      # volontaire d'une image signée mais sans attestation de provenance, refusée par la
+      # policy 04-require-provenance.
       - name: Génère la provenance (pédagogique)
+        if: github.ref_name != 'scenarios/unsigned-image' && github.ref_name != 'scenarios/missing-provenance'
         run: |
           cat > provenance.json <<EOF
           {
@@ -120,6 +129,7 @@ jobs:
           }
           EOF
       - name: Attest provenance pédagogique (cosign, SLSA v0.2)
+        if: github.ref_name != 'scenarios/unsigned-image' && github.ref_name != 'scenarios/missing-provenance'
         run: |
           cosign attest --yes \
             --predicate provenance.json \
@@ -128,6 +138,7 @@ jobs:
 
       # ---- Attestation de provenance OFFICIELLE (GitHub Artifact Attestations) ----
       - name: Attest provenance officielle (GitHub Artifact Attestations)
+        if: github.ref_name != 'scenarios/unsigned-image' && github.ref_name != 'scenarios/missing-provenance'
         uses: actions/attest-build-provenance@v2
         with:
           subject-name: ${{ env.IMAGE }}
@@ -136,6 +147,7 @@ jobs:
 
       # ---- Vérifications (preuve que signature + attestations sont bien exploitables) ----
       - name: Vérifie la signature (keyless)
+        if: github.ref_name != 'scenarios/unsigned-image'
         run: |
           cosign verify \
             --certificate-identity "${{ github.server_url }}/${{ github.repository }}/.github/workflows/supply-chain.yml@${{ github.ref }}" \
@@ -143,6 +155,7 @@ jobs:
             "${{ steps.ref.outputs.ref }}"
 
       - name: Vérifie l'attestation SBOM
+        if: github.ref_name != 'scenarios/unsigned-image'
         run: |
           cosign verify-attestation --type spdxjson \
             --certificate-identity "${{ github.server_url }}/${{ github.repository }}/.github/workflows/supply-chain.yml@${{ github.ref }}" \
@@ -150,6 +163,7 @@ jobs:
             "${{ steps.ref.outputs.ref }}" > /dev/null
 
       - name: Vérifie l'attestation de provenance (pédagogique)
+        if: github.ref_name != 'scenarios/unsigned-image' && github.ref_name != 'scenarios/missing-provenance'
         run: |
           cosign verify-attestation --type slsaprovenance \
             --certificate-identity "${{ github.server_url }}/${{ github.repository }}/.github/workflows/supply-chain.yml@${{ github.ref }}" \
@@ -167,6 +181,7 @@ jobs:
           retention-days: 30
 
       - name: Récapitulatif
+        if: github.ref_name != 'scenarios/unsigned-image' && github.ref_name != 'scenarios/missing-provenance'
         run: |
           {
             echo "### Image signée & attestée :computer:"
@@ -174,6 +189,17 @@ jobs:
             echo "- Signature keyless : vérifiée ✅"
             echo "- Attestation SBOM : vérifiée ✅"
             echo "- Attestation provenance (pédagogique + officielle) : vérifiées ✅"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Récapitulatif (scénario d'attaque volontaire)
+        if: github.ref_name == 'scenarios/unsigned-image' || github.ref_name == 'scenarios/missing-provenance'
+        run: |
+          {
+            echo "### Image volontairement non conforme :warning:"
+            echo "\`${{ steps.ref.outputs.ref }}\`"
+            echo "Branche \`${{ github.ref_name }}\` — build/push/scan réels, mais signature"
+            echo "et/ou attestations volontairement absentes pour tester le refus Kyverno."
+            echo "Voir le job \`deploy\` pour le message de refus réel."
           } >> "$GITHUB_STEP_SUMMARY"
 
   # ---- Déploiement sur le cluster kind local ----
