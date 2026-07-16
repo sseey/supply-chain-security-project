@@ -11,7 +11,7 @@ name: supply-chain
 
 on:
   push:
-    branches: [main, "features/**"]
+    branches: [main, "features/**", "scenarios/**"]
   workflow_dispatch:
 
 permissions:
