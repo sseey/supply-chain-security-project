@@ -218,9 +218,20 @@ jobs:
         run: kubectl apply -f policies/kyverno/
 
       - name: Déploie l'app PAR DIGEST
+        if: github.ref_name != 'scenarios/wrong-registry'
         run: |
           export DIGEST="${{ needs.build-sign-attest.outputs.digest }}"
           ./scripts/deploy.sh
 
       - name: Vérifie que le Pod est ACCEPTED et tourne
+        if: github.ref_name != 'scenarios/wrong-registry'
         run: kubectl -n app get pods -l app=scs-demo-app
+
+      # ---- scenarios/wrong-registry : réutilise le manifeste d'attaque existant ----
+      # Aucun build/push nécessaire : docker.io/library/nginx est une image publique,
+      # aucune credential requise pour la tirer. Le build-sign-attest de cette branche
+      # tourne normalement (image légitime signée) ; c'est UNIQUEMENT cette tentative de
+      # déploiement d'une image hors registre autorisé qui doit être refusée.
+      - name: Déploie une image hors registre autorisé (scénario)
+        if: github.ref_name == 'scenarios/wrong-registry'
+        run: kubectl apply -f k8s/attacks/untrusted-registry.yaml
