@@ -47,6 +47,7 @@ jobs:
       attestations: write    # attestation de provenance native GitHub
     outputs:
       digest: ${{ steps.build.outputs.digest }}
+      tampered_digest: ${{ steps.tampered.outputs.digest }}
     steps:
       - uses: actions/checkout@v4
 
@@ -64,6 +65,23 @@ jobs:
           context: ./app
           push: true
           tags: ${{ env.IMAGE }}:${{ github.sha }}
+
+      # ---- scenarios/tampered-digest : contenu différent, poussé, jamais signé ----
+      # Simule le scénario SolarWinds : le digest "officiel" ci-dessus reste signé et
+      # attesté normalement (aucune incidence dessus). Ce deuxième build produit un digest
+      # DIFFÉRENT (contenu modifié via CACHEBUST), poussé sous un autre tag, mais on ne le
+      # signe/atteste jamais volontairement — c'est ce digest précis qui sera tenté au
+      # déploiement, pour prouver qu'un contenu substitué après coup est refusé.
+      - name: Build image tamponnée (contenu différent, jamais signée)
+        if: github.ref_name == 'scenarios/tampered-digest'
+        id: tampered
+        uses: docker/build-push-action@v6
+        with:
+          context: ./app
+          push: true
+          tags: ${{ env.IMAGE }}:${{ github.sha }}-tampered
+          build-args: |
+            CACHEBUST=${{ github.run_id }}
 
       - name: Référence par digest
         id: ref
@@ -218,14 +236,21 @@ jobs:
         run: kubectl apply -f policies/kyverno/
 
       - name: Déploie l'app PAR DIGEST
-        if: github.ref_name != 'scenarios/wrong-registry'
+        if: github.ref_name != 'scenarios/wrong-registry' && github.ref_name != 'scenarios/tampered-digest'
         run: |
           export DIGEST="${{ needs.build-sign-attest.outputs.digest }}"
           ./scripts/deploy.sh
 
       - name: Vérifie que le Pod est ACCEPTED et tourne
-        if: github.ref_name != 'scenarios/wrong-registry'
+        if: github.ref_name != 'scenarios/wrong-registry' && github.ref_name != 'scenarios/tampered-digest'
         run: kubectl -n app get pods -l app=scs-demo-app
+
+      # ---- scenarios/tampered-digest : tente de déployer le digest jamais signé ----
+      - name: Déploie le digest tamponné, jamais signé (scénario)
+        if: github.ref_name == 'scenarios/tampered-digest'
+        run: |
+          export DIGEST="${{ needs.build-sign-attest.outputs.tampered_digest }}"
+          ./scripts/deploy.sh
 
       # ---- scenarios/wrong-registry : réutilise le manifeste d'attaque existant ----
       # Aucun build/push nécessaire : docker.io/library/nginx est une image publique,

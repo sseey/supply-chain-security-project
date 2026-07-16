@@ -23,6 +23,12 @@ WORKDIR /app
 COPY --from=builder /opt/venv /opt/venv
 COPY app.py .
 
+# ARG utilisé uniquement par le scénario CI scenarios/tampered-digest (voir
+# .github/workflows/supply-chain.yml) pour produire un digest différent sans changer le
+# code applicatif. Sans effet sur un build normal (valeur par défaut fixe).
+ARG CACHEBUST=0
+RUN echo "$CACHEBUST" > /app/.build-marker
+
 USER appuser
 EXPOSE 8080
 
