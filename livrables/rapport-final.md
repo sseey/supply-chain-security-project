@@ -72,6 +72,25 @@ flowchart TD
     style M fill:#27ae60,color:#fff
 ```
 
+*(Rendu natif sur GitHub. Version texte de repli, pour l'export PDF/impression :)*
+
+```
+ code ──► build ──► SBOM (Syft) ──► scan (Grype) ──► SIGNATURE (cosign/Sigstore)
+                                                        │
+                                                        ├─► attestation SBOM
+                                                        └─► attestation de PROVENANCE (SLSA)
+                                                                    │
+                                                             push ──► GHCR (registry)
+                                                                    │
+   ┌────────────────────────────────────────────────────────────────┘
+   ▼
+Cluster Kubernetes (kind / k3s) + KYVERNO (admission control)
+   ├─ image signée par NOTRE identité ?          sinon ─► ❌ REFUSÉE
+   ├─ attestation de provenance présente ?        sinon ─► ❌ REFUSÉE
+   ├─ registry autorisé + tag par digest ?        sinon ─► ❌ REFUSÉE
+   └─ pas de vulnérabilité CRITICAL non corrigée ? sinon ─► ❌ REFUSÉE
+```
+
 ---
 
 ## 3. Mise en œuvre
@@ -120,9 +139,19 @@ flask   3.0.3      3.1.3      Low
 ✅ Aucune vulnérabilité CRITICAL corrigeable — la chaîne peut continuer.
 ```
 
-`[PREUVE À AJOUTER : capture du scénario pédagogique de casse volontaire — rétrograder
-Flask à 2.0.1 dans app/requirements.txt, relancer make scan, montrer l'échec (code ≠ 0),
-puis restaurer la version saine. Voir labs/lab1-build-sbom.md §1.4.]`
+**Scénario pédagogique de casse volontaire, réellement rejoué en CI** (branche
+`scenarios/sbom-critical-cve`) : ajout de `PyYAML==5.3.1` à `app/requirements.txt`
+(dépendance non utilisée par le code — aucun impact sur les tests, seulement sur le scan).
+Avant de choisir cette version, plusieurs candidats ont été testés en local avec `grype`
+pour confirmer qu'ils produisent une vraie **CRITICAL corrigeable** (`Flask==2.0.1` seul ne
+suffisait pas : uniquement du High/Medium dans la base actuelle). PyYAML 5.3.1 confirmé :
+`GHSA-8q59-q68h-6hv4`, Critical, corrigé en 5.4.
+
+![Scan Grype cassé en CI sur PyYAML 5.3.1 (CRITICAL)](images/CI-SBOM.png)
+
+Le job s'arrête à cette étape (`Error: Process completed with exit code 2`) — la CI ne
+va jamais jusqu'à la signature avec cette version. Version saine restaurée sur les autres
+branches.
 
 ### 3.4 Signature (cosign, keyless)
 
@@ -203,6 +232,42 @@ workflow CI (`subject: https://github.com/sseey/.../supply-chain.yml@refs/heads/
 ---
 
 ## 4. Démonstration attaque / défense
+
+### Deux pipelines complémentaires, pas redondants
+
+Le projet démontre les 6 scénarios **deux fois, par deux mécanismes différents**, qui ne
+prouvent pas la même chose :
+
+| | Pipeline **local** (`make demo`) | Pipeline **CI** (branches `scenarios/*`) |
+|---|---|---|
+| Où | Terminal, sur ce poste | GitHub Actions, runner **self-hosted** |
+| Ce qu'il prouve | Le cluster refuse **en direct**, devant témoin | La chaîne complète (build→sign→attest→**déploie**) tient sans intervention manuelle |
+| Déclenchement | Commande tapée à la demande | `git push` sur une branche dédiée |
+| Valeur pour la soutenance | La preuve **live**, la plus convaincante | La preuve de **reproductibilité industrielle** |
+
+**Pourquoi un runner self-hosted et pas `ubuntu-latest` pour le déploiement ?** Un runner
+GitHub-hosted est une VM éphémère dans le cloud de GitHub : elle n'a **aucune route
+réseau** vers le cluster `kind` de ce poste. Le job `deploy` du workflow tourne donc sur un
+**runner self-hosted** (l'agent GitHub Actions installé sur cette VM Vagrant elle-même),
+qui a accès à `kubectl`, au `kubeconfig` et au cluster local — exactement comme un
+`gitlab-runner` en executor *shell*. Point de vigilance documenté et assumé : un runner
+self-hosted sur un dépôt **public** accepte l'exécution de n'importe quel workflow
+déclenché par une PR d'un tiers — il n'est donc démarré (`./run.sh`) que pendant les
+sessions de test, jamais laissé actif en permanence.
+
+**Comment les scénarios d'attaque sont simulés en CI, sans dupliquer le code du
+workflow ?** Un seul fichier `.github/workflows/supply-chain.yml`, avec des conditions
+`if: github.ref_name == 'scenarios/...'` sur les steps concernées (l'équivalent GitHub
+Actions des `rules:`/`only:` GitLab). Le nom de la branche suffit à activer/désactiver
+signature, attestations ou registre cible — aucun fichier à modifier pour créer un nouveau
+scénario, juste une branche :
+
+```bash
+git checkout -b scenarios/unsigned-image main   # ex. : saute la signature sur cette branche
+git push origin scenarios/unsigned-image
+```
+
+### Pipeline local : `make demo`
 
 Script unique, réel, aucun résultat simulé : `make demo` (`scripts/run-demo.sh`). Résumé
 final obtenu : **✅ Réussis : 6 — ❌ Échecs inattendus : 0**.
@@ -286,6 +351,46 @@ NAME                            READY   STATUS    RESTARTS   AGE
 scs-demo-app-7d447cdb44-82s2d   1/1     Running   0          28m
 scs-demo-app-7d447cdb44-mhnvv   1/1     Running   0          28m
 ```
+
+### Pipeline CI : les mêmes scénarios rejoués via `git push`, sans intervention manuelle
+
+Pipeline nominal complet sur `main` — 3 jobs enchaînés, tous verts (`test` → `build-sign-attest`
+→ `deploy`, ce dernier sur le runner self-hosted) :
+
+![Pipeline complet vert sur main (test → build-sign-attest → deploy)](images/CI-main.png)
+
+| Branche | Résultat CI | Cause exacte (log réel) |
+|---|---|---|
+| `main` | ✅ 3 jobs verts, déploiement ACCEPTED | — |
+| `scenarios/sbom-critical-cve` | ❌ `build-sign-attest` casse au scan | PyYAML 5.3.1, CRITICAL corrigeable |
+| `scenarios/unsigned-image` | ❌ `deploy` refusé | Signature absente (voir remarque ci-dessous) |
+| `scenarios/wrong-registry` | ❌ `deploy` refusé | `allowed-registries` : `docker.io/library/nginx` hors `ghcr.io/sseey/` |
+| `scenarios/missing-provenance` | ❌ `deploy` refusé | Provenance absente + identité de branche non reconnue (combiné, voir remarque) |
+| `scenarios/tampered-digest` | ❌ `deploy` refusé | Digest reconstruit après coup, jamais signé (`no signatures found`) |
+
+**`scenarios/wrong-registry`** — aucun build/push nécessaire : réutilise directement le
+manifeste d'attaque `k8s/attacks/untrusted-registry.yaml` (image publique `nginx`, aucune
+credential requise) :
+
+![Refus CI — registre non autorisé](images/CI-wrong-registry.png)
+
+**`scenarios/tampered-digest`** — un second build (contenu modifié via un `ARG CACHEBUST`
+dans `app/Dockerfile`, jamais signé) est tenté au déploiement à la place du build normal
+signé de cette branche. Résultat propre, une seule cause (`no signatures found`) :
+
+![Refus CI — digest tamponné jamais signé](images/CI-tampered-digest.png)
+
+**`scenarios/missing-provenance`** — même nuance que le Test E local : le message combine
+`no matching attestations` (la raison recherchée) et `subject mismatch` (la policy attend
+`main`, cette branche signe sous `scenarios/missing-provenance`) :
+
+![Refus CI — provenance absente (cause combinée)](images/CI-missingprovenence.png)
+
+**`scenarios/unsigned-image`** — `[PREUVE À VÉRIFIER : la capture actuellement dans
+images/CI-unsigned.png est identique à celle de missing-provenance (même digest
+fd369f1bf..., mêmes deux violations). Reprenez la vraie capture de ce scénario — elle doit
+normalement montrer une seule cause, `no signatures found`, digest 479745e6..., sans
+mention de subject mismatch, comme obtenu lors du premier test en direct.]`
 
 ### Honnêteté sur deux nuances techniques (esprit critique)
 
@@ -389,14 +494,37 @@ non documentée n'a été nécessaire pour reconstruire la démo de zéro.
 
 ## 8. Bilan
 
-`[PREUVE À AJOUTER : ce que le groupe a appris, ce qu'il ferait différemment, répartition
-du travail entre membres — section propre à votre groupe, à rédiger collectivement]`
+**Ce que ce projet nous a apporté.** Avant ce module, nos pipelines s'arrêtaient à
+`lint → build → scan (Trivy) → push → deploy` — une chaîne qui *scanne et espère*. Ce
+projet nous a fait réaliser qu'il manquait des maillons entiers à ce schéma, invisibles
+tant qu'on ne se pose pas la question « qu'est-ce qui prouve que l'image déployée est
+celle qui a été scannée ? » :
 
-Éléments factuels à réutiliser dans cette section : la majorité du temps de mise au point a
-été consacrée au débogage d'incompatibilités d'infrastructure (Kyverno/Kubernetes, action CI
+- **La signature (cosign/Sigstore)** — un scan vert ne prouve rien sur l'artefact
+  *déployé* si rien ne relie cryptographiquement l'image en production au résultat du scan.
+  Avant, rien n'empêchait un `docker push` par-dessus le même tag après le scan.
+- **Le SBOM comme attestation, pas comme simple fichier** — on savait générer un SBOM,
+  mais pas qu'un fichier isolé ne prouve rien : il faut l'**attacher au digest** par une
+  attestation signée pour qu'il ait une valeur de preuve.
+- **Les règles sur le registre et le tag** — on déployait par tag sans y penser. Ce projet
+  nous a montré concrètement (l'incident du §5) qu'un tag mutable réintroduit exactement le
+  risque qu'on croit avoir éliminé avec le scan.
+- **L'admission control** — la vraie différence avec ce qu'on faisait avant : on avait un
+  `deploy` en fin de pipeline qui appliquait sans jamais vérifier quoi que ce soit côté
+  cluster. Kyverno déplace le contrôle **au moment du déploiement**, pas seulement au
+  moment du build.
+
+**Ce qu'on fera différemment à l'avenir** : ajouter systématiquement signature +
+attestations + admission control à nos pipelines existants, pas seulement le scan — et
+déployer par digest par défaut, plus jamais par tag, même en interne.
+
+**Où est réellement passé le temps.** La majorité du temps de mise au point a été
+consacrée au débogage d'incompatibilités d'infrastructure (Kyverno/Kubernetes, action CI
 obsolète, `securityContext`) plutôt qu'à la logique de sécurité elle-même (signature,
 attestations, policies) — ce qui illustre concrètement que la difficulté d'un projet
 supply-chain n'est pas uniquement cryptographique, mais aussi opérationnelle.
+
+`[PREUVE À AJOUTER : répartition du travail entre membres du groupe]`
 
 ## Annexes
 
