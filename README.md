@@ -392,13 +392,8 @@ fd369f1bf..., mêmes deux violations). Reprenez la vraie capture de ce scénario
 normalement montrer une seule cause, `no signatures found`, digest 479745e6..., sans
 mention de subject mismatch, comme obtenu lors du premier test en direct.]`
 
-### Honnêteté sur deux nuances techniques (esprit critique)
+### Honnêteté sur une nuance technique (esprit critique)
 
-- **Test B** : le refus vient de la vérification de signature/provenance (le tag `:latest`
-  n'a jamais été poussé, donc aucun manifeste n'existe), pas du pattern `disallow-latest-tag`
-  isolément — Kyverno évalue la vérification d'image pendant la phase de **mutation**, avant
-  la validation des patterns registre/tag. Le résultat (refus) est correct, mais l'attribution
-  exacte du contrôle qui bloque en premier mérite cette précision.
 - **Test E** : le message combine "provenance absente" et "signature non reconnue", car
   l'image de test a été signée **manuellement en local avec une identité OIDC personnelle**
   (compte GitHub individuel), différente de l'identité du workflow CI que les policies
